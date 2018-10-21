@@ -1,0 +1,35 @@
+version: 0.1
+
+environment_variables:
+  plaintext:
+    JAVA_HOME: "/usr/lib/jvm/java-8-openjdk-amd64"
+
+phases:
+  install:
+    commands:
+      - curl -sL https://deb.nodesource.com/setup_10.x | sudo -E bash -
+      - apt-get install -y nodejs
+      - apt-get install -y build-essential
+  pre_build:
+    commands:
+      - mkdir deploy
+  build:
+    commands:
+      - npm install
+      - npm run build
+
+  post_build:
+    commands:
+      - cp infrastructure/* deploy/
+      - cp -r dist/* deploy/
+      - echo "Uploading artifacts to $OUTPUT_BUCKET"
+      - aws s3 cp dist/ s3://$OUTPUT_BUCKET/ --recursive
+      - sed -i "s/<INPUT_BUCKET>/$OUTPUT_BUCKET/g" deploy/application.cfc.test
+      - sed -i "s/<INPUT_BUCKET>/$OUTPUT_BUCKET/g" deploy/application.cfc.production
+      - sed -i "s/<VERSION>/$(date +%s)/g" deploy/application.cfc.test
+      - sed -i "s/<VERSION>/$(date +%s)/g" deploy/application.cfc.production
+
+artifacts:
+  files:
+    - deploy/*
+  discard-paths: yes

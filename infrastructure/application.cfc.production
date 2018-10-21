@@ -1,0 +1,16 @@
+{
+  "Parameters" :
+	{
+    "Stage": "prod",
+    "Subdomain": "mission",
+    "Owner": "dunstan@pubocean.com",
+    "Stack": "mission",
+    "App": "ui",
+    "HostedZone": "Z39YGXVM4Y9TNJ",
+    "HostedZoneDomain": "20daily.com",
+    "HttpsCertificateARN": "arn:aws:acm:us-east-1:760487953959:certificate/79e2e1a7-e80d-446f-bf98-f03025fc945f",
+    "InputBucket": "<INPUT_BUCKET>",
+    "SharedResourcesStackName": "cf-shared-resources",
+    "Version": "<VERSION>"
+  }
+}

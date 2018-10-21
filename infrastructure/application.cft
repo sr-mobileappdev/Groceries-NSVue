@@ -1,0 +1,195 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates resources for the mission UI
+Metadata: {}
+Parameters:
+  Stage:
+    Description: The stage of the application.
+    Type: String
+    AllowedPattern: "[a-z-]+"
+    ConstraintDescription: This should be an alphabet string up to 12 characters long.
+      It may include hyphens. It shouldn't any other punctuation.
+    Default: dev
+    MaxLength: '12'
+    MinLength: '2'
+    AllowedValues:
+    - dev
+    - test
+    - prod
+  Owner:
+    Description: The e-mail address to the owner of the instance or resource.
+    Type: String
+    Default: dunstan@pubocean.com
+  Stack:
+    Description: The name of the service or product provided by a collection of services.
+    Type: String
+    AllowedPattern: "[a-zA-Z0-9-]{1,12}"
+    ConstraintDescription: This should be an alphanumeric string up to 12 characters
+      long. It may include hyphens. It shouldn't any other punctuation.
+    Default: mission
+    MaxLength: '12'
+    MinLength: '3'
+  App:
+    Description: The type of the application.
+    Type: String
+    AllowedPattern: "[a-zA-Z0-9-]{1,12}"
+    ConstraintDescription: This should be an alphanumeric string up to 12 characters
+      long. It may include hyphens. It shouldn't any other punctuation.
+    MaxLength: '12'
+    MinLength: '2'
+    AllowedValues:
+    - ui
+    Default: ui
+  HostedZone:
+    Description: Hosted zone where DNS record needs to be created
+    Type: AWS::Route53::HostedZone::Id
+    Default: Z26EVUXGBKVOOQ
+  HostedZoneDomain:
+    Description: Hosted zone domain where DNS record needs to be created
+    Type: String
+    Default: 20daily.com
+  Subdomain:
+    Description: Hosted zone domain where DNS record needs to be created
+    Type: String
+    Default: mission-test
+  HttpsCertificateARN:
+    Description: ARN for HTTPS certificate
+    Type: String
+    Default: arn:aws:acm:us-east-1:002622805239:certificate/d9774e51-2f82-42f6-bd95-fc9c4154fdb0
+  SharedResourcesStackName:
+    Description: Input bucket containing UI artifacts
+    Type: String
+    Default: cf-shared-resources
+  InputBucket:
+    Description: Input bucket containing UI artifacts
+    Type: String
+    Default: mission-ui-build
+  Version:
+    Description : Version of the build
+    Type: String
+    Default: ""
+Mappings: {}
+Conditions: {}
+Resources:
+  OutputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      BucketName:
+        Fn::Join:
+        - "-"
+        - - Ref: AWS::AccountId
+          - Ref: Stage
+          - Ref: Stack
+          - Ref: App
+      CorsConfiguration:
+        CorsRules:
+        - AllowedHeaders:
+          - "*"
+          AllowedMethods:
+          - GET
+          AllowedOrigins:
+          - "*"
+          Id: myCORSRuleId1
+          MaxAge: '3600'
+      Tags:
+        - Key: Stack
+          Value:
+            Ref: Stack
+        - Key: App
+          Value:
+            Ref: App
+        - Key: Version
+          Value:
+            Ref: Version
+        - Key: Owner
+          Value:
+            Ref: Owner
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+  CopyBucket:
+    Type: AWS::CloudFormation::CustomResource
+    Version: '1.0'
+    Properties:
+      ServiceToken:
+        Fn::ImportValue:
+          Fn::Sub: ${SharedResourcesStackName}-CopyFunctionArn
+      InputBucket:
+        Ref: InputBucket
+      InputBucketKey: ""
+      OutputBucket:
+        Ref: OutputBucket
+      OutputBucketKey: ""
+      ACL: public-read
+      Version:
+        Ref: Version
+  CDN:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+        - DomainName: !Select [1, !Split ["p://", !GetAtt [OutputBucket,WebsiteURL]]]
+          Id: myS3Origin
+          CustomOriginConfig:
+            HTTPPort: 80
+            HTTPSPort: 443
+            OriginProtocolPolicy: http-only
+        Enabled: 'true'
+        Aliases:
+        - Fn::Join:
+          - ''
+          - - Ref: Subdomain
+            - "."
+            - Ref: HostedZoneDomain
+        DefaultCacheBehavior:
+          AllowedMethods:
+          - DELETE
+          - GET
+          - HEAD
+          - OPTIONS
+          - PATCH
+          - POST
+          - PUT
+          CachedMethods:
+          - GET
+          - HEAD
+          - OPTIONS
+          Compress: true
+          DefaultTTL: 60
+          TargetOriginId: myS3Origin
+          ForwardedValues:
+            QueryString: 'false'
+            Cookies:
+              Forward: none
+          ViewerProtocolPolicy: redirect-to-https
+        PriceClass: PriceClass_200
+        CustomErrorResponses:
+          - ErrorCode: '404'
+            ResponsePagePath: "/index.html"
+            ResponseCode: '200'
+            ErrorCachingMinTTL: '30'
+        ViewerCertificate:
+          AcmCertificateArn:
+            Ref: HttpsCertificateARN
+          SslSupportMethod: sni-only
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId:
+        Ref: HostedZone
+      Comment: DNS name for my instance.
+      Name:
+        Fn::Join:
+        - ''
+        - - Ref: Subdomain
+          - "."
+          - Ref: HostedZoneDomain
+          - "."
+      Type: CNAME
+      TTL: '60'
+      ResourceRecords:
+      - Fn::GetAtt:
+        - CDN
+        - DomainName
+Outputs: {}
